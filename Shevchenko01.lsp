@@ -1,4 +1,4 @@
-;; ver. 0.0.1
+;; ver. 0.0.2
 
 (vl-load-com)
 
@@ -192,7 +192,7 @@
       (setq conn nil)
       ) ;_ end of defun
 
-    (defun _kpblc-odbx-open (file odbx / res obj tmp_file)
+    (defun _kpblc-odbx-open (file odbx / res obj tmp_file err)
                             ;|
 *    Открытие любого файла, даже в режиме "ReadOnly"
 *    Параметры вызова:
@@ -256,26 +256,48 @@
                     ) ;_ end of strcat
                  ) ;_ end of setq
            ) ;_ end of vl-file-copy
-         (vla-open odbx tmp_file)
-         (setq res (list (cons "obj" odbx)
-                         (cons "close" t)
-                         (cons "save" nil)
-                         (cons "write" nil)
-                         (cons "name" file)
-                         ) ;_ end of list
-               ) ;_ end of setq
+         (if (vl-catch-all-error-p
+               (setq err (vl-catch-all-apply
+                           (function
+                             (lambda ()
+                               (vla-open odbx tmp_file)
+                               ) ;_ end of lambda
+                             ) ;_ end of function
+                           ) ;_ end of vl-catch-all-apply
+                     ) ;_ end of setq
+               ) ;_ end of vl-catch-all-error-p
+           (princ (strcat "\nCannot open file " tmp_file " : " (vl-catch-all-error-message err)))
+           (setq res (list (cons "obj" odbx)
+                           (cons "close" t)
+                           (cons "save" nil)
+                           (cons "write" nil)
+                           (cons "name" file)
+                           ) ;_ end of list
+                 ) ;_ end of setq
+           ) ;_ end of if
          )
         ((and (findfile file)
               (not (_kpblc-is-file-read-only file))
               ) ;_ end of and
-         (vla-open odbx file)
-         (setq res (list (cons "obj" odbx)
-                         (cons "close" t)
-                         (cons "save" t)
-                         (cons "write" t)
-                         (cons "name" file)
-                         ) ;_ end of list
-               ) ;_ end of setq
+         (if (vl-catch-all-error-p
+               (setq err (vl-catch-all-apply
+                           (function
+                             (lambda ()
+                               (vla-open odbx file)
+                               ) ;_ end of lambda
+                             ) ;_ end of function
+                           ) ;_ end of vl-catch-all-apply
+                     ) ;_ end of setq
+               ) ;_ end of vl-catch-all-error-p
+           (princ (strcat "\nCannot open file " file " : " (vl-catch-all-error-message err)))
+           (setq res (list (cons "obj" odbx)
+                           (cons "close" t)
+                           (cons "save" t)
+                           (cons "write" t)
+                           (cons "name" file)
+                           ) ;_ end of list
+                 ) ;_ end of setq
+           ) ;_ end of if
          )
         ) ;_ end of cond
       res
@@ -441,13 +463,15 @@ http://www.autocad.ru/cgi-bin/f1/board.cgi?t=21054YY
       (progn
         (setq *kpblc-adoc* (vla-get-activedocument (setq *kpblc-acad* (vlax-get-acad-object))))
         (foreach item (vl-browsefiles-in-directory-nested path "*.dwg")
-          (setq dwg (_kpblc-odbx-open item (setq odbx (_kpblc-odbx))))
-          (vlax-for layer (vla-get-layers (cdr (assoc "obj" dwg)))
-            (if (not (member (strcase (vla-get-name layer)) lst))
-              (setq lst (cons (strcase (vla-get-name layer)) lst))
-              ) ;_ end of if
-            ) ;_ end of vlax-for
-          (_kpblc-odbx-close odbx)
+          (if (setq dwg (_kpblc-odbx-open item (setq odbx (_kpblc-odbx))))
+            (progn (vlax-for layer (vla-get-layers (cdr (assoc "obj" dwg)))
+                     (if (not (member (strcase (vla-get-name layer)) lst))
+                       (setq lst (cons (strcase (vla-get-name layer)) lst))
+                       ) ;_ end of if
+                     ) ;_ end of vlax-for
+                   (_kpblc-odbx-close odbx)
+                   ) ;_ end of progn
+            ) ;_ end of if
           ) ;_ end of foreach
         (setq handle (open file "w"))
         (foreach str (vl-sort lst '<) (write-line str handle))
